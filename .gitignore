@@ -1,0 +1,41 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+
+# Editor directories and files
+.idea/
+*.iml
+.vscode/
+
+# Flutter/Dart
+.packages
+.dart_tool/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Android
+# Ignore sensitive data.
+android/key.properties
+android/local.properties
+android/app/google-services.json
+
+# Ignore generated files and directories.
+android/.gradle
+android/app/build/
+android/build/
+*.jks
+*.keystore
+
+# iOS
+ios/Pods/
+ios/Podfile.lock
+ios/.symlinks/
+ios/Runner.xcworkspace/
+
+# Other
+coverage/
+*.map
