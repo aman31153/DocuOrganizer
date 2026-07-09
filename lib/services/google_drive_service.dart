@@ -1,6 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import '../models/drive_result_model.dart';
 import '../models/doc_model.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:google_sign_in/google_sign_in.dart';
@@ -72,7 +73,7 @@ class GoogleDriveService {
     }
   }
 
-  Future<DrivePaginatedResult> listDriveFiles({String? pageToken, String query = ''}) async {
+  Future<DrivePaginatedResult> listDriveFiles({String? pageToken, String query = '', String? orderBy}) async {
     try {
       final driveApi = await _getDriveApi();
       if (driveApi == null) return DrivePaginatedResult([], null);
@@ -83,14 +84,14 @@ class GoogleDriveService {
       }
       
       final fileList = await driveApi.files.list(
-        $fields: 'nextPageToken, files(id, name, mimeType, size, quotaBytesUsed, createdTime, webViewLink)',
+        $fields: 'nextPageToken, files(id, name, mimeType, size, quotaBytesUsed, createdTime, webViewLink, parents)',
         q: finalQuery,
         pageSize: 10,
-        orderBy: 'createdTime desc',
+        orderBy: orderBy,
         pageToken: pageToken,
       );
       
-      final docs = (fileList.files ?? []).map((file) {
+      final List<DocModel> docs = (fileList.files ?? []).map((file) {
         final sizeBytes = double.tryParse(file.quotaBytesUsed ?? file.size ?? '0') ?? 0.0;
         final sizeMB = sizeBytes / (1024 * 1024);
         
@@ -101,7 +102,7 @@ class GoogleDriveService {
           size: sizeMB,
           uploadDate: file.createdTime ?? DateTime.now(),
           url: file.webViewLink ?? '',
-          folderId: 'drive',
+          folderId: file.parents?.first ?? 'root',
         );
       }).toList();
       
@@ -124,7 +125,6 @@ class GoogleDriveService {
       final lastUpdate = prefs.getInt('drive_storage_last_update') ?? 0;
       final now = DateTime.now().millisecondsSinceEpoch;
       
-      // Cache for 1 hour (3600000 ms)
       if (now - lastUpdate < 3600000) {
         return {
           'videoSize': prefs.getDouble('drive_video_size') ?? 0.0,
@@ -156,13 +156,13 @@ class GoogleDriveService {
           final sizeBytes = double.tryParse(file.quotaBytesUsed ?? file.size ?? '0') ?? 0.0;
           final type = _getDocTypeFromMime(file.mimeType ?? '');
           if (type == DocType.video) videoSize += sizeBytes;
-          if (type == DocType.doc || type == DocType.pdf || type == DocType.txt || type == DocType.ppt || type == DocType.xls) docSize += sizeBytes;
-          if (type == DocType.image) imageSize += sizeBytes;
+          else if (type == DocType.doc || type == DocType.pdf || type == DocType.txt || type == DocType.ppt || type == DocType.xls) docSize += sizeBytes;
+          else if (type == DocType.image) imageSize += sizeBytes;
+          else othersSize += sizeBytes;
         }
         
         pageToken = fileList.nextPageToken;
         pageCount++;
-        // Limit to 5 pages (5000 files) to avoid excessive background work
       } while (pageToken != null && pageCount < 5);
       
       final videoSizeMB = videoSize / (1024 * 1024);
@@ -202,6 +202,40 @@ class GoogleDriveService {
     }
   }
 
+  Future<void> moveFiles(Map<String, String> filesToMove, String newParentId) async {
+    try {
+      final driveApi = await _getDriveApi();
+      if (driveApi == null) return;
+
+      final futures = filesToMove.entries.map((entry) {
+        final fileId = entry.key;
+        final oldParentId = entry.value;
+        // A file must have at least one parent, so we can't remove the last one without adding a new one.
+        return driveApi.files.update(drive.File(), fileId, addParents: newParentId, removeParents: oldParentId);
+      });
+
+      await Future.wait(futures);
+    } catch (e) {
+      debugPrint('Google Drive Batch Move Exception: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> deleteFiles(List<String> fileIds) async {
+    try {
+      final driveApi = await _getDriveApi();
+      if (driveApi == null) return;
+
+      // The Dart client library doesn't have a great batching API out of the box for this.
+      // We'll just loop and send requests in parallel.
+      final deleteFutures = fileIds.map((id) => driveApi.files.delete(id));
+      await Future.wait(deleteFutures);
+    } catch (e) {
+      debugPrint('Google Drive Batch Delete Exception: $e');
+      rethrow;
+    }
+  }
+
   Future<void> renameFile(String fileId, String newName) async {
     try {
       final driveApi = await _getDriveApi();
@@ -226,11 +260,4 @@ class GoogleDriveService {
     if (mimeType.contains('video')) return DocType.video;
     return DocType.other;
   }
-}
-
-
-class DrivePaginatedResult {
-  final List<DocModel> files;
-  final String? nextPageToken;
-  DrivePaginatedResult(this.files, this.nextPageToken);
 }

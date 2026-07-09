@@ -11,11 +11,17 @@ import '../providers/sync_provider.dart';
 class FileListTile extends ConsumerStatefulWidget {
   final DocModel doc;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
+  final bool isSelected;
+  final bool isSelectionMode;
 
   const FileListTile({
     super.key,
     required this.doc,
     required this.onTap,
+    this.onLongPress,
+    this.isSelected = false,
+    this.isSelectionMode = false,
   });
 
   @override
@@ -154,73 +160,99 @@ class _FileListTileState extends ConsumerState<FileListTile> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final selectedColor = isDark ? Colors.blue.withOpacity(0.3) : Colors.blue.withOpacity(0.1);
+
     return Material(
-      color: Colors.transparent,
+      color: widget.isSelected ? selectedColor : Colors.transparent,
       child: ListTile(
         onTap: widget.onTap,
-      leading: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: _getFileColor().withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8),
+        onLongPress: widget.onLongPress,
+        leading: widget.isSelectionMode
+            ? CircleAvatar(
+                backgroundColor: widget.isSelected ? Colors.blue : Colors.grey.shade300,
+                child: widget.isSelected
+                    ? const Icon(Icons.check, color: Colors.white)
+                    : Icon(_getFileIcon(), color: _getFileColor(), size: 20),
+              )
+            : Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: _getFileColor().withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(_getFileIcon(), color: _getFileColor()),
+              ),
+        title: Text(
+          _localName,
+          style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
         ),
-        child: Icon(_getFileIcon(), color: _getFileColor()),
-      ),
-      title: Text(
-        _localName,
-        style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
-      ),
-      subtitle: Text(
-        '${DateFormat('MMM dd, yyyy').format(widget.doc.uploadDate)} • ${widget.doc.size.toStringAsFixed(2)} MB',
-        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-      ),
-      trailing: PopupMenuButton<String>(
-        icon: const Icon(Icons.more_vert),
-        onSelected: (value) async {
-          if (widget.doc.url.contains('drive.google.com')) {
-            switch (value) {
-              case 'Rename': await _showRenameDialog(); break;
-              case 'Delete': _showDeleteConfirmation(); break;
-            }
-            return;
-          }
-          switch (value) {
-            case 'Rename': await _showRenameDialog(); break;
-            case 'Move': _showMoveDialog(); break;
-            case 'Star': await ref.read(databaseServiceProvider).toggleStarDocument(widget.doc.id, !widget.doc.isStarred); break;
-            case 'Delete': _showDeleteConfirmation(); break;
-          }
-        },
-        itemBuilder: (context) {
-          if (widget.doc.url.contains('drive.google.com')) {
-            return [
-              const PopupMenuItem(value: 'Rename', child: Text('Rename')),
-              const PopupMenuItem(value: 'Delete', child: Text('Delete')),
-            ];
-          }
-          return [
-            PopupMenuItem(
-              value: 'Star',
-              child: Row(
-                children: [
-                  Icon(widget.doc.isStarred ? Icons.star : Icons.star_border, color: Colors.amber),
-                  const SizedBox(width: 8),
-                  Text(widget.doc.isStarred ? 'Unstar' : 'Star'),
-                ],
+        subtitle: Text(
+          '${DateFormat('MMM dd, yyyy').format(widget.doc.uploadDate)} • ${widget.doc.size.toStringAsFixed(2)} MB',
+          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+        ),
+        trailing: widget.isSelectionMode
+            ? null
+            : PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert),
+                onSelected: (value) async {
+                  if (widget.doc.url.contains('drive.google.com')) {
+                    switch (value) {
+                      case 'Rename':
+                        await _showRenameDialog();
+                        break;
+                      case 'Delete':
+                        _showDeleteConfirmation();
+                        break;
+                    }
+                    return;
+                  }
+                  switch (value) {
+                    case 'Rename':
+                      await _showRenameDialog();
+                      break;
+                    case 'Move':
+                      _showMoveDialog();
+                      break;
+                    case 'Star':
+                      await ref.read(databaseServiceProvider).toggleStarDocument(widget.doc.id, !widget.doc.isStarred);
+                      break;
+                    case 'Delete':
+                      _showDeleteConfirmation();
+                      break;
+                  }
+                },
+                itemBuilder: (context) {
+                  if (widget.doc.url.contains('drive.google.com')) {
+                    return [
+                      const PopupMenuItem(value: 'Rename', child: Text('Rename')),
+                      const PopupMenuItem(value: 'Delete', child: Text('Delete')),
+                    ];
+                  }
+                  return [
+                    PopupMenuItem(
+                      value: 'Star',
+                      child: Row(
+                        children: [
+                          Icon(widget.doc.isStarred ? Icons.star : Icons.star_border, color: Colors.amber),
+                          const SizedBox(width: 8),
+                          Text(widget.doc.isStarred ? 'Unstar' : 'Star'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'Move',
+                      child: Row(
+                        children: [const Icon(Icons.drive_file_move_outlined, size: 20), const SizedBox(width: 8), const Text('Move to Folder')],
+                      ),
+                    ),
+                    const PopupMenuItem(value: 'Rename', child: Text('Rename')),
+                    const PopupMenuItem(value: 'Delete', child: Text('Delete')),
+                  ];
+                },
               ),
-            ),
-            const PopupMenuItem(
-              value: 'Move',
-              child: Row(
-                children: [Icon(Icons.drive_file_move_outlined, size: 20), SizedBox(width: 8), Text('Move to Folder')],
-              ),
-            ),
-            const PopupMenuItem(value: 'Rename', child: Text('Rename')),
-            const PopupMenuItem(value: 'Delete', child: Text('Delete')),
-          ];
-        },
       ),
-    ));
+    );
   }
 
   void _showDeleteConfirmation() {
