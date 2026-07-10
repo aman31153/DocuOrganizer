@@ -6,6 +6,8 @@ import '../screens/settings_screen.dart';
 import '../screens/help_support_screen.dart';
 import '../screens/trash_screen.dart';
 import 'package:documents_organizer/providers/auth_provider.dart';
+import '../providers/google_drive_provider.dart';
+import '../providers/sync_provider.dart';
 
 class AppDrawer extends ConsumerWidget {
   const AppDrawer({super.key});
@@ -77,6 +79,12 @@ class AppDrawer extends ConsumerWidget {
             title: const Text('Logout', style: TextStyle(color: Colors.red)),
             onTap: () async {
               await ref.read(authServiceProvider).signOut();
+              await ref.read(googleDriveServiceProvider).clearSession();
+              ref.invalidate(googleDriveFilesProvider);
+              ref.invalidate(googleDriveStorageProvider);
+              ref.invalidate(googleDriveUsageProvider);
+              ref.invalidate(driveStorageBreakdownProvider);
+              ref.invalidate(driveFilesNotifierProvider);
             },
           ),
           const SizedBox(height: 20),

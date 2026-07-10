@@ -10,6 +10,8 @@ import 'settings_screen.dart';
 import 'help_support_screen.dart';
 import '../widgets/storage_usage_card.dart';
 import 'package:documents_organizer/providers/auth_provider.dart';
+import '../providers/google_drive_provider.dart';
+import '../providers/sync_provider.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -139,6 +141,12 @@ class ProfileScreen extends ConsumerWidget {
           TextButton(
             onPressed: () async {
               await ref.read(authServiceProvider).signOut();
+              await ref.read(googleDriveServiceProvider).clearSession();
+              ref.invalidate(googleDriveFilesProvider);
+              ref.invalidate(googleDriveStorageProvider);
+              ref.invalidate(googleDriveUsageProvider);
+              ref.invalidate(driveStorageBreakdownProvider);
+              ref.invalidate(driveFilesNotifierProvider);
               if (context.mounted) {
                 Navigator.pop(context);
               }

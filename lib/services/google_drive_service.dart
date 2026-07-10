@@ -5,28 +5,64 @@ import '../models/drive_result_model.dart';
 import '../models/doc_model.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:extension_google_sign_in_as_googleapis_auth/extension_google_sign_in_as_googleapis_auth.dart';
+import 'package:googleapis_auth/googleapis_auth.dart' as gapis;
+import 'package:http/http.dart' as http;
 
 class GoogleDriveService {
   final GoogleSignIn _googleSignIn;
+  GoogleSignInAccount? _cachedAccount;
   
   GoogleDriveService(this._googleSignIn);
 
-  Future<drive.DriveApi?> _getDriveApi() async {
-    var client = await _googleSignIn.authenticatedClient();
-    if (client == null) {
-      try {
-        final account = await _googleSignIn.signInSilently();
-        if (account != null) {
-          client = await _googleSignIn.authenticatedClient();
-        }
-      } catch (e) {
-        debugPrint('Silent sign in failed: $e');
-      }
-    }
+  Future<GoogleSignInAccount?> _getSignedInAccount() async {
+    if (_cachedAccount != null) return _cachedAccount;
 
-    if (client == null) return null;
-    return drive.DriveApi(client);
+    try {
+      final account = await _googleSignIn.attemptLightweightAuthentication(
+        reportAllExceptions: false,
+      );
+      if (account != null) {
+        _cachedAccount = account;
+      }
+      return account;
+    } catch (e) {
+      debugPrint('Google Drive restore auth failed: $e');
+      return null;
+    }
+  }
+
+  Future<void> clearSession() async {
+    _cachedAccount = null;
+  }
+
+  Future<drive.DriveApi?> _getDriveApi() async {
+    try {
+      final account = await _getSignedInAccount();
+      if (account == null) {
+        return null;
+      }
+
+      final auth = await account.authorizationClient.authorizeScopes(
+        ['https://www.googleapis.com/auth/drive'],
+      );
+      if (auth == null) return null;
+
+      final credentials = gapis.AccessCredentials(
+        gapis.AccessToken(
+          'Bearer',
+          auth.accessToken,
+          DateTime.now().toUtc().add(const Duration(days: 365)),
+        ),
+        null,
+        ['https://www.googleapis.com/auth/drive'],
+      );
+
+      final client = gapis.authenticatedClient(http.Client(), credentials);
+      return drive.DriveApi(client);
+    } catch (e) {
+      debugPrint('Google Drive auth failed: $e');
+      return null;
+    }
   }
 
   Future<String?> uploadFile(File file, String fileName) async {
@@ -101,7 +137,7 @@ class GoogleDriveService {
           type: _getDocTypeFromMime(file.mimeType ?? ''),
           size: sizeMB,
           uploadDate: file.createdTime ?? DateTime.now(),
-          url: file.webViewLink ?? '',
+          url: file.webContentLink ?? file.webViewLink ?? '',
           folderId: file.parents?.first ?? 'root',
         );
       }).toList();

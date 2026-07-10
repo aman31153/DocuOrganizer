@@ -5,7 +5,6 @@ import 'package:file_picker/file_picker.dart';
 import '../models/doc_model.dart';
 import '../models/folder_model.dart';
 import '../services/cloudinary_service.dart';
-import '../services/google_drive_service.dart';
 import '../providers/google_drive_provider.dart';
 import '../providers/storage_provider.dart';
 import '../providers/sync_provider.dart';
@@ -55,7 +54,7 @@ class _CreateNewSheetState extends ConsumerState<CreateNewSheet> {
   }
 
   Future<void> _uploadFile() async {
-    final result = await FilePicker.platform.pickFiles();
+    final result = await FilePicker.pickFiles();
 
     if (result != null && result.files.single.path != null) {
       setState(() => _isUploading = true);

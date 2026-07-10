@@ -4,11 +4,7 @@ import '../services/auth_service.dart';
 import 'package:documents_organizer/providers/auth_provider.dart';
 
 final googleSignInProvider = Provider<GoogleSignIn>((ref) {
-  return GoogleSignIn(
-    scopes: [
-      'https://www.googleapis.com/auth/drive',
-    ],
-  );
+  return GoogleSignIn.instance;
 });
 
 final authServiceProvider = Provider((ref) {

@@ -53,7 +53,7 @@ class _GoogleDriveScreenState extends ConsumerState<GoogleDriveScreen> {
   }
 
   Future<void> _uploadToDrive() async {
-    final result = await FilePicker.platform.pickFiles();
+    final result = await FilePicker.pickFiles();
     if (result != null && result.files.single.path != null) {
       setState(() => _isUploading = true);
       try {
@@ -80,7 +80,7 @@ class _GoogleDriveScreenState extends ConsumerState<GoogleDriveScreen> {
 
   Future<void> _refreshData() async {
     // We can run these in parallel
-    await Future.wait([
+    await Future.wait<void>([
       ref.read(driveFilesNotifierProvider.notifier).loadFiles(),
       ref.read(googleDriveServiceProvider).clearStorageBreakdownCache(),
     ]);
