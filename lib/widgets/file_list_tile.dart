@@ -4,9 +4,9 @@ import '../models/doc_model.dart';
 import '../providers/storage_provider.dart';
 import 'package:intl/intl.dart';
 
-import '../services/google_drive_service.dart';
 import '../providers/google_drive_provider.dart';
 import '../providers/sync_provider.dart';
+import '../providers/auth_provider.dart';
 
 class FileListTile extends ConsumerStatefulWidget {
   final DocModel doc;
@@ -108,7 +108,7 @@ class _FileListTileState extends ConsumerState<FileListTile> {
       } catch (e) {
         if (mounted) {
           setState(() { _localName = widget.doc.name; }); // Rollback on error
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+          _showSnackBar('Error: $e');
         }
       }
     }
@@ -140,13 +140,11 @@ class _FileListTileState extends ConsumerState<FileListTile> {
                       try {
                         await ref.read(databaseServiceProvider).moveDocument(widget.doc.id, folder.id);
                         if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Moved "${_localName}" to ${folder.name}')),
-                          );
+                          _showSnackBar('Moved "$_localName" to ${folder.name}');
                         }
                       } catch (e) {
                         if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Move failed: $e')));
+                          _showSnackBar('Move failed: $e');
                         }
                       }
                     },
@@ -158,15 +156,24 @@ class _FileListTileState extends ConsumerState<FileListTile> {
     );
   }
 
+  void _showSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final selectedColor = isDark ? Colors.blue.withOpacity(0.3) : Colors.blue.withOpacity(0.1);
+    final selectedColor = isDark ? Colors.blue.withValues(alpha: 0.3) : Colors.blue.withValues(alpha: 0.1);
 
     return Material(
       color: widget.isSelected ? selectedColor : Colors.transparent,
       child: ListTile(
-        onTap: widget.onTap,
+        onTap: () async {
+          final userId = ref.read(authStateProvider).value?.uid;
+          await ref.read(databaseServiceProvider).saveRecentDocument(widget.doc, userId: userId);
+          widget.onTap();
+        },
         onLongPress: widget.onLongPress,
         leading: widget.isSelectionMode
             ? CircleAvatar(
@@ -178,7 +185,7 @@ class _FileListTileState extends ConsumerState<FileListTile> {
             : Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: _getFileColor().withOpacity(0.1),
+                  color: _getFileColor().withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(_getFileIcon(), color: _getFileColor()),
@@ -225,8 +232,8 @@ class _FileListTileState extends ConsumerState<FileListTile> {
                 itemBuilder: (context) {
                   if (widget.doc.url.contains('drive.google.com')) {
                     return [
-                      const PopupMenuItem(value: 'Rename', child: Text('Rename')),
-                      const PopupMenuItem(value: 'Delete', child: Text('Delete')),
+                      PopupMenuItem(value: 'Rename', child: Text('Rename')),
+                      PopupMenuItem(value: 'Delete', child: Text('Delete')),
                     ];
                   }
                   return [
@@ -240,14 +247,14 @@ class _FileListTileState extends ConsumerState<FileListTile> {
                         ],
                       ),
                     ),
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'Move',
                       child: Row(
                         children: [const Icon(Icons.drive_file_move_outlined, size: 20), const SizedBox(width: 8), const Text('Move to Folder')],
                       ),
                     ),
-                    const PopupMenuItem(value: 'Rename', child: Text('Rename')),
-                    const PopupMenuItem(value: 'Delete', child: Text('Delete')),
+                    PopupMenuItem(value: 'Rename', child: Text('Rename')),
+                    PopupMenuItem(value: 'Delete', child: Text('Delete')),
                   ];
                 },
               ),
@@ -271,21 +278,17 @@ class _FileListTileState extends ConsumerState<FileListTile> {
                   await ref.read(googleDriveServiceProvider).deleteFile(widget.doc.id);
                   ref.read(driveFilesNotifierProvider.notifier).loadFiles();
                   if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('File deleted from Google Drive')),
-                    );
+                    _showSnackBar('File deleted from Google Drive');
                   }
                 } catch (e) {
                   if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Delete failed: $e')));
+                    _showSnackBar('Delete failed: $e');
                   }
                 }
               } else {
                 await ref.read(databaseServiceProvider).trashDocument(widget.doc.id);
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('File moved to trash')),
-                  );
+                  _showSnackBar('File moved to trash');
                 }
               }
             },

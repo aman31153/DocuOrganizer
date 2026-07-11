@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/storage_provider.dart';
-import '../providers/sync_provider.dart';
 import '../widgets/storage_usage_card.dart';
 import '../widgets/folder_card.dart';
 import '../widgets/file_list_tile.dart';
 import '../widgets/app_drawer.dart';
+import '../models/doc_model.dart';
 import 'folder_details_screen.dart';
 import 'doc_viewer_screen.dart';
 import 'folders_screen.dart';
@@ -19,9 +19,7 @@ class HomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final foldersAsync = ref.watch(foldersWithCountsProvider);
-    final docsAsync = ref.watch(recentDocsProvider);
-    final isGoogleDrive = ref.watch(googleDriveSyncProvider);
-    final homeDriveFilesAsync = isGoogleDrive ? ref.watch(homeDriveFilesProvider) : null;
+    final recentDocsAsync = ref.watch(recentDocsProvider);
     final user = ref.watch(authStateProvider).value;
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -72,11 +70,7 @@ class HomeScreen extends ConsumerWidget {
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: () async {
-          if (isGoogleDrive) {
-            ref.invalidate(homeDriveFilesProvider);
-          }
-        },
+        onRefresh: () async {},
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
           child: Column(
@@ -177,110 +171,63 @@ class HomeScreen extends ConsumerWidget {
                     onPressed: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (context) => const AllFilesScreen()),
+                        MaterialPageRoute(builder: (context) => const AllFilesScreen(showRecentOnly: true)),
                       );
                     },
                     child: const Text('View all'),
                   ),
                 ],
               ),
-              docsAsync.when(
-                data: (docs) => ListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: docs.length,
-                  itemBuilder: (context, index) {
-                    final doc = docs[index];
-                    return FileListTile(
-                      doc: doc,
-                      onTap: () async {
-                        if (doc.url.contains('drive.google.com')) {
-                          final url = Uri.parse(doc.url);
-                          if (await canLaunchUrl(url)) {
-                            await launchUrl(url, mode: LaunchMode.externalApplication);
-                          } else {
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Could not open file')),
-                              );
-                            }
-                          }
-                        } else {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => DocViewerScreen(doc: doc),
-                            ),
-                          );
-                        }
-                      },
+              FutureBuilder<List<DocModel>>(
+                future: recentDocsAsync,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snapshot.hasError) {
+                    return Text('Error: ${snapshot.error}');
+                  }
+                  final docs = (snapshot.data ?? <DocModel>[]).take(4).toList();
+                  if (docs.isEmpty) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 20),
+                      child: Center(child: Text('No recent files yet.')),
                     );
-                  },
-                ),
-                loading: () => const Center(child: CircularProgressIndicator()),
-                error: (err, stack) => Text('Error: $err'),
-              ),
-              if (isGoogleDrive && homeDriveFilesAsync != null) ...[
-                const SizedBox(height: 24),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Google Drive Files',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: isDark ? Colors.white : Colors.black,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                homeDriveFilesAsync.when(
-                  data: (docs) {
-                    if (docs.isEmpty) {
-                      return const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 20),
-                        child: Center(child: Text('No files found in Google Drive.')),
-                      );
-                    }
-                    return ListView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: docs.length,
-                      itemBuilder: (context, index) {
-                        final doc = docs[index];
-                        return FileListTile(
-                          doc: doc,
-                          onTap: () async {
-                            if (doc.url.contains('drive.google.com')) {
-                              final url = Uri.parse(doc.url);
-                              if (await canLaunchUrl(url)) {
-                                await launchUrl(url, mode: LaunchMode.externalApplication);
-                              } else {
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Could not open file')),
-                                  );
-                                }
-                              }
+                  }
+                  return ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: docs.length,
+                    itemBuilder: (context, index) {
+                      final doc = docs[index];
+                      return FileListTile(
+                        doc: doc,
+                        onTap: () async {
+                          if (doc.url.contains('drive.google.com')) {
+                            final url = Uri.parse(doc.url);
+                            if (await canLaunchUrl(url)) {
+                              await launchUrl(url, mode: LaunchMode.externalApplication);
                             } else {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => DocViewerScreen(doc: doc),
-                                ),
-                              );
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Could not open file')),
+                                );
+                              }
                             }
-                          },
-                        );
-                      },
-                    );
-                  },
-                  loading: () => const Center(child: CircularProgressIndicator()),
-                  error: (err, stack) => Text('Error: $err'),
-                ),
-              ],
+                          } else {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => DocViewerScreen(doc: doc),
+                              ),
+                            );
+                          }
+                        },
+                      );
+                    },
+                  );
+                },
+              ),
             ],
           ),
         ),

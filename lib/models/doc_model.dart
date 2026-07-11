@@ -10,6 +10,7 @@ class DocModel {
   final String folderId;
   final bool isStarred;
   final bool isDeleted;
+  final DateTime? lastOpenedAt;
 
   DocModel({
     required this.id,
@@ -21,6 +22,7 @@ class DocModel {
     required this.folderId,
     this.isStarred = false,
     this.isDeleted = false,
+    this.lastOpenedAt,
   });
 
   Map<String, dynamic> toMap() {
@@ -34,6 +36,7 @@ class DocModel {
       'folderId': folderId,
       'isStarred': isStarred,
       'isDeleted': isDeleted,
+      if (lastOpenedAt != null) 'lastOpenedAt': lastOpenedAt!.toIso8601String(),
     };
   }
 
@@ -43,6 +46,11 @@ class DocModel {
       date = DateTime.tryParse(map['uploadDate'].toString()) ?? DateTime.now();
     } else {
       date = DateTime.now();
+    }
+
+    DateTime? lastOpened;
+    if (map['lastOpenedAt'] != null) {
+      lastOpened = DateTime.tryParse(map['lastOpenedAt'].toString());
     }
 
     return DocModel(
@@ -55,6 +63,7 @@ class DocModel {
       folderId: map['folderId'] ?? '',
       isStarred: map['isStarred'] ?? false,
       isDeleted: map['isDeleted'] ?? false,
+      lastOpenedAt: lastOpened,
     );
   }
 }

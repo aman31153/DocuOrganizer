@@ -1,22 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/doc_model.dart';
 import '../providers/storage_provider.dart';
 import '../widgets/file_list_tile.dart';
 import 'doc_viewer_screen.dart';
-
-import '../services/auth_service.dart';
 import '../widgets/app_drawer.dart';
 import 'package:documents_organizer/providers/auth_provider.dart';
 
 class AllFilesScreen extends ConsumerWidget {
-  const AllFilesScreen({super.key});
+  final bool showRecentOnly;
+
+  const AllFilesScreen({super.key, this.showRecentOnly = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final docsAsync = ref.watch(rootDocsProvider);
+    final rootDocsAsync = ref.watch(rootDocsProvider);
+    final recentDocsFuture = ref.watch(recentDocsProvider);
     final user = ref.watch(authStateProvider).value;
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
 
     final displayName = user?.displayName ?? 'User';
     final photoUrl = user?.photoURL;
@@ -48,53 +49,104 @@ class AllFilesScreen extends ConsumerWidget {
           style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
         ),
       ),
-      body: docsAsync.when(
-        data: (docs) {
-          if (docs.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.folder_open, size: 80, color: Colors.grey[300]),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No files found',
-                    style: TextStyle(
-                      fontSize: 18,
-                      color: Colors.grey[600],
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Upload documents to see them here',
-                    style: TextStyle(color: Colors.grey[500]),
-                  ),
-                ],
-              ),
-            );
-          }
-          return ListView.builder(
-            itemCount: docs.length,
-            itemBuilder: (context, index) {
-              final doc = docs[index];
-              return FileListTile(
-                doc: doc,
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => DocViewerScreen(doc: doc),
+      body: showRecentOnly
+          ? FutureBuilder<List<DocModel>>(
+              future: recentDocsFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError) {
+                  return Center(child: Text('Error: ${snapshot.error}'));
+                }
+
+                final docs = snapshot.data ?? <DocModel>[];
+                if (docs.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.history, size: 80, color: Colors.grey[300]),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No recent files yet',
+                          style: TextStyle(
+                            fontSize: 18,
+                            color: Colors.grey[600],
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
                     ),
                   );
-                },
-              );
-            },
-          );
-        },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, stack) => Center(child: Text('Error: $err')),
-      ),
+                }
+
+                return ListView.builder(
+                  itemCount: docs.length,
+                  itemBuilder: (context, index) {
+                    final doc = docs[index];
+                    return FileListTile(
+                      doc: doc,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => DocViewerScreen(doc: doc),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                );
+              },
+            )
+          : rootDocsAsync.when(
+              data: (docs) {
+                if (docs.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.folder_open, size: 80, color: Colors.grey[300]),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No files found',
+                          style: TextStyle(
+                            fontSize: 18,
+                            color: Colors.grey[600],
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Upload documents to see them here',
+                          style: TextStyle(color: Colors.grey[500]),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+                return ListView.builder(
+                  itemCount: docs.length,
+                  itemBuilder: (context, index) {
+                    final doc = docs[index];
+                    return FileListTile(
+                      doc: doc,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => DocViewerScreen(doc: doc),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                );
+              },
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (err, stack) => Center(child: Text('Error: $err')),
+            ),
     );
   }
 }

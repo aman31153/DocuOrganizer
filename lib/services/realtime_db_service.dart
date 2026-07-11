@@ -69,6 +69,71 @@ class RealtimeDatabaseService {
     await newRef.set(doc.toMap());
   }
 
+  Future<void> saveRecentDocument(DocModel doc, {String? userId}) async {
+    final targetPath = userId != null ? 'users/$userId/recent_documents' : 'recent_documents';
+    final ref = _db.ref(targetPath);
+    final docRef = ref.child(doc.id);
+    final now = DateTime.now().toUtc().toIso8601String();
+    final payload = {
+      'id': doc.id,
+      'name': doc.name,
+      'type': doc.type.index,
+      'size': doc.size,
+      'uploadDate': doc.uploadDate.toUtc().toIso8601String(),
+      'url': doc.url,
+      'folderId': doc.folderId,
+      'isStarred': doc.isStarred,
+      'isDeleted': doc.isDeleted,
+      'lastOpenedAt': now,
+    };
+
+    final existing = await docRef.get();
+    if (existing.exists) {
+      await docRef.update({'lastOpenedAt': now});
+    } else {
+      await docRef.set(payload);
+    }
+
+    final snapshot = await ref.get();
+    if (snapshot.exists) {
+      final items = snapshot.children.toList();
+      if (items.length > 10) {
+        final sortedItems = items
+            .map((child) => MapEntry(child, child.child('lastOpenedAt').value?.toString() ?? ''))
+            .toList()
+          ..sort((a, b) => a.value.compareTo(b.value));
+        final extras = items.length - 10;
+        for (var i = 0; i < extras; i++) {
+          final keyToRemove = sortedItems[i].key.key;
+          if (keyToRemove != null) {
+            await ref.child(keyToRemove).remove();
+          }
+        }
+      }
+    }
+  }
+
+  Stream<List<DocModel>> streamRecentDocuments({String? userId}) {
+    final ref = userId != null ? _db.ref('users/$userId/recent_documents') : _db.ref('recent_documents');
+    return ref.onValue.map((event) {
+      final data = event.snapshot.value as Map<dynamic, dynamic>?;
+      if (data == null) return [];
+
+      final list = data.entries.map((e) {
+        final map = Map<String, dynamic>.from(e.value as Map);
+        return DocModel.fromMap({...map, 'id': map['id'] ?? e.key});
+      }).toList();
+
+      list.sort((a, b) {
+        final aOpened = a.lastOpenedAt ?? a.uploadDate;
+        final bOpened = b.lastOpenedAt ?? b.uploadDate;
+        return bOpened.compareTo(aOpened);
+      });
+
+      return list.take(10).toList();
+    });
+  }
+
   Future<void> trashDocument(String id) {
     return _db.ref('documents').child(id).update({'isDeleted': true});
   }

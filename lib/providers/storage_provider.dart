@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/legacy.dart';
 import '../models/doc_model.dart';
 import '../models/folder_model.dart';
 import '../services/realtime_db_service.dart';
+import '../providers/auth_provider.dart';
 
 final databaseServiceProvider = Provider((ref) => RealtimeDatabaseService());
 
@@ -25,10 +26,15 @@ final trashDocsProvider = StreamProvider<List<DocModel>>((ref) {
   return ref.watch(databaseServiceProvider).streamDocs(null, includeDeleted: true);
 });
 
-// Limit to top 5 most recent
-final recentDocsProvider = StreamProvider<List<DocModel>>((ref) async* {
-  final stream = ref.watch(databaseServiceProvider).streamDocs(null);
-  yield* stream.map((docs) => docs.take(5).toList());
+final recentDocsProvider = Provider<Future<List<DocModel>>>((ref) async {
+  final user = ref.watch(authStateProvider).value;
+  if (user == null) {
+    return [];
+  }
+
+  final db = ref.watch(databaseServiceProvider);
+  final recentFromFirebase = await db.streamRecentDocuments(userId: user.uid).first;
+  return recentFromFirebase;
 });
 
 // Files not in any folder (Root files)
