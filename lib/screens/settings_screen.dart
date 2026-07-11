@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:file_picker/file_picker.dart';
+import '../providers/download_provider.dart';
 import '../providers/storage_provider.dart';
 import '../providers/sync_provider.dart';
+import '../widgets/download_status_panel.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -164,6 +167,69 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             },
             secondary: const Icon(Icons.add_to_drive),
           ),
+          const Divider(),
+          _buildSectionHeader('Downloads'),
+          ListTile(
+            leading: const Icon(Icons.folder_open_outlined),
+            title: const Text('Download Location'),
+            subtitle: Text(ref.watch(downloadPathProvider) ?? 'Default'),
+            onTap: () async {
+              String? selectedDirectory = await FilePicker.getDirectoryPath();
+
+              if (selectedDirectory != null) {
+                ref.read(downloadPathProvider.notifier).setPath(selectedDirectory);
+              }
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.cloud_download_outlined),
+            title: const Text('Bulk Download from Google Drive'),
+            subtitle: const Text('Download multiple files at once'),
+            onTap: () {
+              // In a real app, this would open a screen to pick files from Google Drive.
+              // For this demonstration, we'll trigger a mock download.
+              const List<String> mockFileIds = <String>[
+                // TODO: Replace with actual file IDs from your Google Drive for testing
+              ];
+              if (mockFileIds.isNotEmpty) {
+                ref.read(downloadProvider.notifier).startBulkDownload(mockFileIds);
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content: Text('No file IDs provided for download test.')),
+                );
+              }
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.speed_outlined),
+            title: const Text('Concurrent Downloads'),
+            subtitle: const Text('Limit simultaneous downloads. Requires restart.'),
+            trailing: PopupMenuButton<int>(
+              onSelected: (value) {
+                if (value != ref.read(maxConcurrentDownloadsProvider)) {
+                  ref.read(maxConcurrentDownloadsProvider.notifier).setLimit(value);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('App restart required for change to take effect.')),
+                  );
+                }
+              },
+              initialValue: ref.watch(maxConcurrentDownloadsProvider),
+              itemBuilder: (context) => [1, 2, 3, 5, 10].map((limit) {
+                return PopupMenuItem<int>(
+                  value: limit,
+                  child: Text('$limit'),
+                );
+              }).toList(),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                child: Text('${ref.watch(maxConcurrentDownloadsProvider)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              ),
+            ),
+          ),
+          const Divider(),
+          _buildSectionHeader('ACTIVE DOWNLOADS'),
+          const DownloadStatusPanel(),
           const Divider(),
           _buildSectionHeader('Account'),
           ListTile(

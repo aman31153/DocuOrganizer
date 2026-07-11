@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shimmer/shimmer.dart';
 import '../providers/sync_provider.dart';
 import '../models/doc_model.dart';
+import '../providers/download_provider.dart';
 import '../widgets/file_grid_item.dart';
 import '../widgets/file_list_tile.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -121,8 +122,15 @@ class _GoogleDriveScreenState extends ConsumerState<GoogleDriveScreen> {
           icon: const Icon(Icons.download_outlined),
           onPressed: selectedCount > 0
               ? () {
+                  final fileIds = state.selectedFileIds.toList();
+                  ref.read(downloadProvider.notifier).startBulkDownload(fileIds);
+                  notifier.clearSelection();
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Bulk download not implemented yet.')),
+                    const SnackBar(
+                      content:
+                          Text('Download started. See progress in Settings.'),
+                      duration: Duration(seconds: 3),
+                    ),
                   );
                 }
               : null,

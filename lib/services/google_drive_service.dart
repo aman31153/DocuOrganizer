@@ -1,18 +1,22 @@
-import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import '../models/drive_result_model.dart';
-import '../models/doc_model.dart';
-import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:googleapis_auth/googleapis_auth.dart' as gapis;
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+import '../models/doc_model.dart';
+import '../models/drive_result_model.dart';
 
 class GoogleDriveService {
   final GoogleSignIn _googleSignIn;
   GoogleSignInAccount? _cachedAccount;
-  
+
   GoogleDriveService(this._googleSignIn);
+
+  Future<void> clearSession() async {
+    _cachedAccount = null;
+  }
 
   Future<GoogleSignInAccount?> _getSignedInAccount() async {
     if (_cachedAccount != null) return _cachedAccount;
@@ -31,16 +35,10 @@ class GoogleDriveService {
     }
   }
 
-  Future<void> clearSession() async {
-    _cachedAccount = null;
-  }
-
   Future<drive.DriveApi?> _getDriveApi() async {
     try {
       final account = await _getSignedInAccount();
-      if (account == null) {
-        return null;
-      }
+      if (account == null) return null;
 
       final auth = await account.authorizationClient.authorizeScopes(
         ['https://www.googleapis.com/auth/drive'],
@@ -65,27 +63,26 @@ class GoogleDriveService {
     }
   }
 
+  Future<drive.DriveApi?> getDriveApi() async => _getDriveApi();
+
   Future<String?> uploadFile(File file, String fileName) async {
     try {
       final driveApi = await _getDriveApi();
       if (driveApi == null) {
-        throw Exception("Not authenticated with Google. Please log out and log in again to grant Drive permissions.");
+        throw Exception('Not authenticated with Google. Please log in again.');
       }
 
       final driveFile = drive.File();
       driveFile.name = fileName;
-      
       final media = drive.Media(file.openRead(), file.lengthSync());
-      
       final result = await driveApi.files.create(
-        driveFile, 
+        driveFile,
         uploadMedia: media,
         $fields: 'id, webViewLink, webContentLink',
       );
-      
       return result.webViewLink ?? result.webContentLink ?? result.id;
     } catch (e) {
-      debugPrint('Google Drive Upload Exception: $e');
+      debugPrint('Google Drive upload exception: $e');
       rethrow;
     }
   }
@@ -94,8 +91,8 @@ class GoogleDriveService {
     try {
       final driveApi = await _getDriveApi();
       if (driveApi == null) return null;
-      
-      final about = await driveApi.about.get($fields: "storageQuota");
+
+      final about = await driveApi.about.get($fields: 'storageQuota');
       final quota = about.storageQuota;
       if (quota != null) {
         final usage = double.tryParse(quota.usage ?? '0') ?? 0.0;
@@ -104,7 +101,7 @@ class GoogleDriveService {
       }
       return null;
     } catch (e) {
-      debugPrint('Google Drive Quota Exception: $e');
+      debugPrint('Google Drive quota exception: $e');
       return null;
     }
   }
@@ -113,24 +110,23 @@ class GoogleDriveService {
     try {
       final driveApi = await _getDriveApi();
       if (driveApi == null) return DrivePaginatedResult([], null);
-      
+
       String finalQuery = "trashed = false";
       if (query.isNotEmpty) {
         finalQuery += " and ($query)";
       }
-      
+
       final fileList = await driveApi.files.list(
-        $fields: 'nextPageToken, files(id, name, mimeType, size, quotaBytesUsed, createdTime, webViewLink, parents)',
+        $fields: 'nextPageToken, files(id, name, mimeType, size, quotaBytesUsed, createdTime, webViewLink, webContentLink, parents)',
         q: finalQuery,
         pageSize: 10,
         orderBy: orderBy,
         pageToken: pageToken,
       );
-      
-      final List<DocModel> docs = (fileList.files ?? []).map((file) {
+
+      final docs = (fileList.files ?? []).map((file) {
         final sizeBytes = double.tryParse(file.quotaBytesUsed ?? file.size ?? '0') ?? 0.0;
         final sizeMB = sizeBytes / (1024 * 1024);
-        
         return DocModel(
           id: file.id ?? '',
           name: file.name ?? 'Unknown',
@@ -141,14 +137,13 @@ class GoogleDriveService {
           folderId: file.parents?.first ?? 'root',
         );
       }).toList();
-      
+
       return DrivePaginatedResult(docs, fileList.nextPageToken);
     } catch (e) {
-      debugPrint('Google Drive List Exception: $e');
+      debugPrint('Google Drive list exception: $e');
       return DrivePaginatedResult([], null);
     }
   }
-
 
   Future<void> clearStorageBreakdownCache() async {
     final prefs = await SharedPreferences.getInstance();
@@ -160,7 +155,7 @@ class GoogleDriveService {
       final prefs = await SharedPreferences.getInstance();
       final lastUpdate = prefs.getInt('drive_storage_last_update') ?? 0;
       final now = DateTime.now().millisecondsSinceEpoch;
-      
+
       if (now - lastUpdate < 3600000) {
         return {
           'videoSize': prefs.getDouble('drive_video_size') ?? 0.0,
@@ -172,14 +167,14 @@ class GoogleDriveService {
 
       final driveApi = await _getDriveApi();
       if (driveApi == null) return {'videoSize': 0.0, 'docSize': 0.0, 'imageSize': 0.0, 'othersSize': 0.0};
-      
+
       double videoSize = 0;
       double docSize = 0;
       double imageSize = 0;
       double othersSize = 0;
       String? pageToken;
       int pageCount = 0;
-      
+
       do {
         final fileList = await driveApi.files.list(
           $fields: 'nextPageToken, files(mimeType, size, quotaBytesUsed)',
@@ -187,20 +182,25 @@ class GoogleDriveService {
           pageSize: 1000,
           pageToken: pageToken,
         );
-        
+
         for (var file in (fileList.files ?? [])) {
           final sizeBytes = double.tryParse(file.quotaBytesUsed ?? file.size ?? '0') ?? 0.0;
           final type = _getDocTypeFromMime(file.mimeType ?? '');
-          if (type == DocType.video) videoSize += sizeBytes;
-          else if (type == DocType.doc || type == DocType.pdf || type == DocType.txt || type == DocType.ppt || type == DocType.xls) docSize += sizeBytes;
-          else if (type == DocType.image) imageSize += sizeBytes;
-          else othersSize += sizeBytes;
+          if (type == DocType.video) {
+            videoSize += sizeBytes;
+          } else if ([DocType.doc, DocType.pdf, DocType.txt, DocType.ppt, DocType.xls].contains(type)) {
+            docSize += sizeBytes;
+          } else if (type == DocType.image) {
+            imageSize += sizeBytes;
+          } else {
+            othersSize += sizeBytes;
+          }
         }
-        
+
         pageToken = fileList.nextPageToken;
         pageCount++;
       } while (pageToken != null && pageCount < 5);
-      
+
       final videoSizeMB = videoSize / (1024 * 1024);
       final docSizeMB = docSize / (1024 * 1024);
       final imageSizeMB = imageSize / (1024 * 1024);
@@ -212,20 +212,18 @@ class GoogleDriveService {
         'imageSize': imageSizeMB,
         'othersSize': othersSizeMB,
       };
-      
-      prefs.setDouble('drive_video_size', videoSizeMB);
-      prefs.setDouble('drive_doc_size', docSizeMB);
-      prefs.setDouble('drive_image_size', imageSizeMB);
-      prefs.setDouble('drive_others_size', othersSizeMB);
-      prefs.setInt('drive_storage_last_update', now);
-      
+
+      await prefs.setDouble('drive_video_size', videoSizeMB);
+      await prefs.setDouble('drive_doc_size', docSizeMB);
+      await prefs.setDouble('drive_image_size', imageSizeMB);
+      await prefs.setDouble('drive_others_size', othersSizeMB);
+      await prefs.setInt('drive_storage_last_update', now);
       return result;
     } catch (e) {
-      debugPrint('Google Drive Breakdown Exception: $e');
+      debugPrint('Google Drive breakdown exception: $e');
       return {'videoSize': 0.0, 'docSize': 0.0, 'imageSize': 0.0, 'othersSize': 0.0};
     }
   }
-
 
   Future<void> deleteFile(String fileId) async {
     try {
@@ -233,7 +231,7 @@ class GoogleDriveService {
       if (driveApi == null) return;
       await driveApi.files.delete(fileId);
     } catch (e) {
-      debugPrint('Google Drive Delete Exception: $e');
+      debugPrint('Google Drive delete exception: $e');
       rethrow;
     }
   }
@@ -246,13 +244,17 @@ class GoogleDriveService {
       final futures = filesToMove.entries.map((entry) {
         final fileId = entry.key;
         final oldParentId = entry.value;
-        // A file must have at least one parent, so we can't remove the last one without adding a new one.
-        return driveApi.files.update(drive.File(), fileId, addParents: newParentId, removeParents: oldParentId);
+        return driveApi.files.update(
+          drive.File(),
+          fileId,
+          addParents: newParentId,
+          removeParents: oldParentId,
+        );
       });
 
       await Future.wait(futures);
     } catch (e) {
-      debugPrint('Google Drive Batch Move Exception: $e');
+      debugPrint('Google Drive move exception: $e');
       rethrow;
     }
   }
@@ -261,13 +263,10 @@ class GoogleDriveService {
     try {
       final driveApi = await _getDriveApi();
       if (driveApi == null) return;
-
-      // The Dart client library doesn't have a great batching API out of the box for this.
-      // We'll just loop and send requests in parallel.
       final deleteFutures = fileIds.map((id) => driveApi.files.delete(id));
       await Future.wait(deleteFutures);
     } catch (e) {
-      debugPrint('Google Drive Batch Delete Exception: $e');
+      debugPrint('Google Drive batch delete exception: $e');
       rethrow;
     }
   }
@@ -280,20 +279,20 @@ class GoogleDriveService {
       driveFile.name = newName;
       await driveApi.files.update(driveFile, fileId);
     } catch (e) {
-      debugPrint('Google Drive Rename Exception: $e');
+      debugPrint('Google Drive rename exception: $e');
       rethrow;
     }
   }
 
   DocType _getDocTypeFromMime(String mimeType) {
-    if (mimeType == 'application/vnd.google-apps.folder') return DocType.folder;
+    if (mimeType.contains('folder')) return DocType.folder;
+    if (mimeType.contains('image/')) return DocType.image;
+    if (mimeType.contains('video/')) return DocType.video;
     if (mimeType.contains('pdf')) return DocType.pdf;
-    if (mimeType.contains('presentation') || mimeType.contains('powerpoint')) return DocType.ppt;
-    if (mimeType.contains('document') || mimeType.contains('word')) return DocType.doc;
-    if (mimeType.contains('spreadsheet') || mimeType.contains('excel')) return DocType.xls;
-    if (mimeType.contains('text')) return DocType.txt;
-    if (mimeType.contains('image')) return DocType.image;
-    if (mimeType.contains('video')) return DocType.video;
+    if (mimeType.contains('text/')) return DocType.txt;
+    if (mimeType.contains('spreadsheet')) return DocType.xls;
+    if (mimeType.contains('document')) return DocType.doc;
+    if (mimeType.contains('presentation')) return DocType.ppt;
     return DocType.other;
   }
 }

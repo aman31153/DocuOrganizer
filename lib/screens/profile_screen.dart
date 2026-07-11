@@ -6,6 +6,7 @@ import 'all_files_screen.dart';
 import 'starred_files_screen.dart';
 import 'folders_screen.dart';
 import 'trash_screen.dart';
+import 'downloads_screen.dart';
 import 'settings_screen.dart';
 import 'help_support_screen.dart';
 import '../widgets/storage_usage_card.dart';
@@ -85,6 +86,12 @@ class ProfileScreen extends ConsumerWidget {
               Icons.delete_outline,
               'Trash',
               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const TrashScreen())),
+            ),
+            _buildProfileOption(
+              context,
+              Icons.download_for_offline_outlined,
+              'Downloads',
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const DownloadsScreen())),
             ),
             const Divider(height: 40),
             _buildProfileOption(

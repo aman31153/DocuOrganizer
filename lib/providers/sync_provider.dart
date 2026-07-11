@@ -43,6 +43,15 @@ final googleDriveUsageProvider = FutureProvider<Map<String, double>>((ref) async
   };
 });
 
+final homeDriveFilesProvider = FutureProvider<List<DocModel>>((ref) async {
+  final service = ref.watch(googleDriveServiceProvider);
+  final result = await service.listDriveFiles(
+    query: '',
+    orderBy: 'modifiedTime desc',
+  );
+  return result.files.take(5).toList();
+});
+
 enum DriveViewType { list, grid }
 
 class DriveFilesState {
